@@ -1,0 +1,78 @@
+name: uptime
+# Checks https://alex.coralcell.me every ~10 minutes. On 3 consecutive
+# failures it opens (or updates) an "[outage]" issue — which emails the
+# owner — and marks the run red (a second email). Auto-closes on recovery.
+# Lives in its own public repo: public repos get unlimited Actions minutes,
+# and nothing here is secret (the URL is public).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: write
+
+concurrency: uptime
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SITE: alex.coralcell.me
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe endpoints (3 tries, 25s apart)
+        id: probe
+        run: |
+          check() {
+            local url="$1" code=000
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$url" || echo 000)
+              [ "$code" = "200" ] && return 0
+              sleep 25
+            done
+            echo "::warning::$url returned $code"
+            return 1
+          }
+          FAILED=""
+          check "https://$SITE/api/health" || FAILED="$FAILED api"
+          check "https://$SITE/login"      || FAILED="$FAILED web"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+
+      # GitHub disables schedules after 60 days without repo activity;
+      # one empty commit a day (only the 03:00 UTC run wins) resets that.
+      - name: Keepalive commit (daily, first run after 03:00 UTC)
+        run: |
+          if [ "$(date -u +%H)" = "03" ] && \
+             [ "$(git log -1 --format=%s)" != "keepalive $(date -u +%F)" ]; then
+            git config user.name  "uptime-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git commit --allow-empty -m "keepalive $(date -u +%F)"
+            git push
+          fi
+
+      - name: Alert or recover
+        run: |
+          FAILED="${{ steps.probe.outputs.failed }}"
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+                 --search "[outage] in:title" --json number --jq '.[0].number // empty')
+          now="$(date -u +'%F %T') UTC"
+          if [ -n "${FAILED// /}" ]; then
+            if [ -z "$open" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" \
+                --title "[outage] $SITE is DOWN:$FAILED" \
+                --body "@coralcellcompany-boop $SITE failed 3 consecutive checks at $now. Failing:$FAILED.
+
+This issue auto-closes when checks pass again. Runbook: deploy/PRODUCTION.md in the main repo."
+            else
+              gh issue comment "$open" --repo "$GITHUB_REPOSITORY" \
+                --body "Still down:$FAILED at $now"
+            fi
+            exit 1
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --repo "$GITHUB_REPOSITORY" \
+              --comment "✅ Recovered — all checks passing at $now."
+          fi
