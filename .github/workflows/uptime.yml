@@ -62,11 +62,11 @@ jobs:
           now="$(date -u +'%F %T') UTC"
           if [ -n "${FAILED// /}" ]; then
             if [ -z "$open" ]; then
+              BODY="@coralcellcompany-boop $SITE failed 3 consecutive checks at $now. Failing:$FAILED."
+              BODY="$BODY"$'\n\n'"This issue auto-closes when checks pass again. Runbook: deploy/PRODUCTION.md in the main repo."
               gh issue create --repo "$GITHUB_REPOSITORY" \
                 --title "[outage] $SITE is DOWN:$FAILED" \
-                --body "@coralcellcompany-boop $SITE failed 3 consecutive checks at $now. Failing:$FAILED.
-
-This issue auto-closes when checks pass again. Runbook: deploy/PRODUCTION.md in the main repo."
+                --body "$BODY"
             else
               gh issue comment "$open" --repo "$GITHUB_REPOSITORY" \
                 --body "Still down:$FAILED at $now"
