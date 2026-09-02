@@ -1,5 +1,5 @@
 name: uptime
-# Checks https://alex.coralcell.me every ~10 minutes. On 3 consecutive
+# Checks https://baplus.coralcell.me every ~10 minutes. On 3 consecutive
 # failures it opens (or updates) an "[outage]" issue — which emails the
 # owner — and marks the run red (a second email). Auto-closes on recovery.
 # Lives in its own public repo: public repos get unlimited Actions minutes,
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      SITE: alex.coralcell.me
+      SITE: baplus.coralcell.me
     steps:
       - uses: actions/checkout@v4
 
